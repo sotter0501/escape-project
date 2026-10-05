@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>좀비 아포칼립스 생존 시뮬레이터</title>
+    <!-- 레트로 픽셀느낌 폰트 불러오기 -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=DungGeunMo&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 기본 스타일 및 레트로 테마 설정 */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #0b0d0c;
+            color: #33ff33;
+            font-family: 'DungGeunMo', monospace;
+            margin: 0;
+            padding: 20px 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 메인 CRT 모니터 케이스 */
+        .game-container {
+            width: 100%;
+            max-width: 680px;
+            background: #141814;
+            border: 4px solid #2a3d2a;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0, 255, 65, 0.15), inset 0 0 15px rgba(0, 0, 0, 0.8);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 화면 주사선 효과 (Scanline) */
+        .game-container::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 1.4rem;
+            color: #00ff66;
+            text-shadow: 0 0 8px rgba(0, 255, 102, 0.6);
+            margin-top: 0;
+            margin-bottom: 15px;
+            border-bottom: 2px dashed #2a3d2a;
+            padding-bottom: 10px;
+        }
+
+        /* 상단 상태창 (HUD) */
+        .status-board {
+            background: #080a08;
+            border: 2px solid #2a3d2a;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.05rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .highlight-red { color: #ff3333; }
+        .highlight-yellow { color: #ffcc00; }
+        .highlight-blue { color: #33ffff; }
+
+        /* 이벤트 알림 패널 */
+        .event-card {
+            background: #0d130d;
+            border: 2px solid #00ff66;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: inset 0 0 10px rgba(0, 255, 102, 0.1);
+        }
+
+        .event-title {
+            font-size: 1.1rem;
+            color: #ffff55;
+            margin-bottom: 8px;
+        }
+
+        .event-desc {
+            font-size: 1rem;
+            color: #d0ffd0;
+            line-height: 1.4;
+        }
+
+        /* 콘솔 로그 창 (#monitor) */
+        .monitor-label {
+            font-size: 0.85rem;
+            color: #88aa88;
+            margin-bottom: 5px;
+        }
+
+        #monitor {
+            height: 160px;
+            background-color: #040504;
+            border: 2px solid #1e2e1e;
+            border-radius: 6px;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #aaffaa;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+        }
+
+        #monitor::-webkit-scrollbar {
+            width: 6px;
+        }
+        #monitor::-webkit-scrollbar-thumb {
+            background: #2a3d2a;
+            border-radius: 3px;
+        }
+
+        /* 선택 버튼 영역 */
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .action-btn {
+            background: #142214;
+            color: #00ff66;
+            border: 2px solid #00ff66;
+            padding: 12px 15px;
+            font-family: 'DungGeunMo', monospace;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .action-btn:hover:not(:disabled) {
+            background: #00ff66;
+            color: #000;
+            box-shadow: 0 0 12px rgba(0, 255, 102, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .action-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .action-btn:disabled {
+            border-color: #445544;
+            color: #556655;
+            background: #0a0f0a;
+            cursor: not-allowed;
+        }
+
+        .btn-subtext {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        /* 데미지 및 액션 연출 효과 */
+        .flash-red {
+            animation: flashRed 0.4s ease;
+        }
+        @keyframes flashRed {
+            0% { background-color: #550000; }
+            100% { background-color: #141814; }
+        }
+
+        .flash-green {
+            animation: flashGreen 0.4s ease;
+        }
+        @keyframes flashGreen {
+            0% { background-color: #005500; }
+            100% { background-color: #141814; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container" id="gameWindow">
+        <h1>🧟 좀비 아포칼립스 생존자 </h1>
+        
+        <!-- 상단 대시보드 상태창 -->
+        <div class="status-board">
+            <div class="status-item">D+<span id="dayDisplay" class="highlight-yellow">1</span></div>
+            <div class="status-item">체력: <span id="healthDisplay" class="highlight-red"></span></div>
+            <div class="status-item">식량: <span id="foodDisplay" class="highlight-yellow"></span></div>
+            <div class="status-item">생존자: <span id="survivorDisplay" class="highlight-blue"></span></div>
+        </div>
+
+        <!-- 실시간 사건 제시 알림판 -->
+        <div class="event-card">
+            <div class="event-title" id="eventTitle">🚨 생존 기록 시작</div>
+            <div class="event-desc" id="eventDesc">당신은 폐쇄된 학교 안에서 눈을 떴습니다. 7일 동안 살아남아야 합니다!</div>
+        </div>
+
+        <!-- 생존 일기 로그 출력창 (#monitor) -->
+        <div class="monitor-label">[ 📜 생존 기록 로그 ]</div>
+        <div id="monitor"></div>
+
+        <!-- 선택지 버튼 그룹 -->
+        <div class="button-group">
+            <button id="choice1Btn" class="action-btn">
+                <span id="c1Text">① 첫 번째 행동</span>
+                <span class="btn-subtext" id="c1Sub"></span>
+            </button>
+            <button id="choice2Btn" class="action-btn">
+                <span id="c2Text">② 두 번째 행동</span>
+                <span class="btn-subtext" id="c2Sub"></span>
+            </button>
+            <button id="restartBtn" class="action-btn" style="display: none; border-color: #ffcc00; color: #ffcc00;">
+                🔄 다시 시작하기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 변수 (Variables)
+        // ==========================================
+        let day = 1;             // 진행 날짜 (목표: 7일)
+        let health = 3;          // 체력 (최대 5)
+        let food = 2;            // 식량
+        let survivors = 1;       // 동료 생존자 수
+        let currentEventIndex = 0; // 현재 발생한 사건 번호
+
+        // HTML DOM 요소 연동
+        const dayDisplay = document.getElementById("dayDisplay");
+        const healthDisplay = document.getElementById("healthDisplay");
+        const foodDisplay = document.getElementById("foodDisplay");
+        const survivorDisplay = document.getElementById("survivorDisplay");
+        const monitor = document.getElementById("monitor");
+        const eventTitle = document.getElementById("eventTitle");
+        const eventDesc = document.getElementById("eventDesc");
+        const choice1Btn = document.getElementById("choice1Btn");
+        const choice2Btn = document.getElementById("choice2Btn");
+        const restartBtn = document.getElementById("restartBtn");
+        const c1Text = document.getElementById("c1Text");
+        const c1Sub = document.getElementById("c1Sub");
+        const c2Text = document.getElementById("c2Text");
+        const c2Sub = document.getElementById("c2Sub");
+        const gameWindow = document.getElementById("gameWindow");
+
+        // ==========================================
+        // 2. 배열 (Arrays): 다양한 랜덤 사건 데이터
+        // ==========================================
+        let eventsList = [
+            {
+                title: "🚨 체육관에서 이상한 소리가 들립니다.",
+                desc: "체육관 문틈으로 무언가 부딪히는 소리가 납니다.",
+                c1: "확인한다", c1Sub: "위험 감수",
+                c2: "숨는다", c2Sub: "식량 소모",
+                r1: { hp: -1, food: 0, survivor: 0, msg: "💥 체육관에서 좀비 3마리와 조우! 겨우 도망쳤으나 체력을 잃었습니다. (체력 -1)" },
+                r2: { hp: 0, food: -1, survivor: 0, msg: "🍞 안전하게 숨어 있었지만, 불안해서 빵을 더 먹었습니다. (식량 -1)" }
+            },
+            {
+                title: "📦 매점 근처에서 상자를 발견했습니다.",
+                desc: "자물쇠가 잠긴 구호물품 상자처럼 보입니다.",
+                c1: "상자를 열어본다", c1Sub: "식량 획득 도전",
+                c2: "무시하고 지난친다", c2Sub: "안전 우선",
+                r1: { hp: 0, food: 2, survivor: 0, msg: "🎉 대박! 상자 안에서 통조림을 다량 발견했습니다! (식량 +2)" },
+                r2: { hp: 0, food: 0, survivor: 0, msg: "🚶 안전을 위해 그냥 지나쳤습니다. 아무 일도 일어나지 않았습니다." }
+            },
+            {
+                title: "🙋‍♂️ 방송실에서 구호 신호가 들립니다.",
+                desc: "누군가 스피커를 통해 구조 요청을 보내고 있습니다.",
+                c1: "구하러 간다", c1Sub: "동료 획득 도전",
+                c2: "모른 척한다", c2Sub: "위험 회피",
+                r1: { hp: -1, food: 0, survivor: 1, msg: "🤝 좀비 무리를 뚫고 다른 생존자를 구출했습니다! (체력 -1, 생존자 +1)" },
+                r2: { hp: 0, food: 0, survivor: 0, msg: "🙈 스스로의 생존이 먼저입니다. 방송실을 외면했습니다." }
+            },
+            {
+                title: "🌧️ 비가 내리며 밤이 찾아왔습니다.",
+                desc: "체력이 떨어지고 기온이 차가워집니다.",
+                c1: "식량을 먹고 휴식한다", c1Sub: "식량 -1, 체력 회복",
+                c2: "식량을 아끼고 견딘다", c2Sub: "체력 위험",
+                r1: { hp: 1, food: -1, survivor: 0, msg: "🍲 든든하게 먹고 체력을 회복했습니다. (체력 +1, 식량 -1)" },
+                r2: { hp: -1, food: 0, survivor: 0, msg: "🥶 추위와 배고픔 속에서 밤을 지새웠습니다. (체력 -1)" }
+            },
+            {
+                title: "🧟‍♂️ 복도 끝에서 대형 좀비가 배회합니다.",
+                desc: "길을 지나가려면 녀석을 지나쳐야만 합니다.",
+                c1: "기습 공격한다", c1Sub: "싸움 선택",
+                c2: "돌아서 우회한다", c2Sub: "시간/식량 소모",
+                r1: { hp: -1, food: 1, survivor: 0, msg: "⚔️ 치열한 싸움 끝에 좀비를 처치하고 소지품을 얻었습니다. (체력 -1, 식량 +1)" },
+                r2: { hp: 0, food: -1, survivor: 0, msg: "🏃 먼 길로 우회하느라 체력이 소모되어 더 많은 빵을 먹었습니다. (식량 -1)" }
+            }
+        ];
+
+        // ==========================================
+        // 3. 반복문 (For Loop)을 활용한 상태 아이콘 표시
+        // ==========================================
+        function getIcons(iconStr, count) {
+            let result = "";
+            for (let i = 0; i < count; i++) {
+                result += iconStr;
+            }
+            return result !== "" ? result : "없음";
+        }
+
+        // 상태 화면 갱신
+        function renderStatus() {
+            dayDisplay.innerText = day;
+            healthDisplay.innerText = getIcons("❤️", health);
+            foodDisplay.innerText = getIcons("🍞", food);
+            survivorDisplay.innerText = getIcons("👤", survivors);
+        }
+
+        // 화면 시각 효과 (Flash Effect)
+        function triggerFlash(type) {
+            gameWindow.classList.remove("flash-red", "flash-green");
+            void gameWindow.offsetWidth; // CSS 애니메이션 리셋 트릭
+            if (type === 'damage') gameWindow.classList.add("flash-red");
+            if (type === 'heal') gameWindow.classList.add("flash-green");
+        }
+
+        // ==========================================
+        // 4. 함수 (Functions): 핵심 게임 진행 로직
+        // ==========================================
+
+        // 랜덤 이벤트 출력 함수
+        function showRandomEvent() {
+            // 조건문: 7일 생존 성공 조건 검사
+            if (day > 7) {
+                gameWin();
+                return;
+            }
+
+            // 배열에서 랜덤하게 하나 선택
+            currentEventIndex = Math.floor(Math.random() * eventsList.length);
+            let ev = eventsList[currentEventIndex];
+
+            eventTitle.innerText = `[D+${day}] ${ev.title}`;
+            eventDesc.innerText = ev.desc;
+
+            c1Text.innerText = `① ${ev.c1}`;
+            c1Sub.innerText = ev.c1Sub;
+            c2Text.innerText = `② ${ev.c2}`;
+            c2Sub.innerText = ev.c2Sub;
+        }
+
+        // 선택 처리 함수
+        function processChoice(optionNumber) {
+            let ev = eventsList[currentEventIndex];
+            let result = (optionNumber === 1) ? ev.r1 : ev.r2;
+
+            // 상태 수치 반영
+            health += result.hp;
+            food += result.food;
+            survivors += result.survivor;
+
+            // 시각 연출
+            if (result.hp < 0) triggerFlash('damage');
+            else if (result.food > 0 || result.hp > 0) triggerFlash('heal');
+
+            // monitor.innerHTML += 구문을 활용해 모니터 로그 누적
+            monitor.innerHTML += `[Day ${day}] 선택: ${optionNumber === 1 ? ev.c1 : ev.c2}\n`;
+            monitor.innerHTML += `➡️ ${result.msg}\n-----------------------------------\n`;
+
+            // 모니터 자동 스크롤 하단 이동
+            monitor.scrollTop = monitor.scrollHeight;
+
+            // 날짜 증가
+            day++;
+
+            // 조건문: 사망 판단
+            if (health <= 0) {
+                gameOver("☠️ 체력이 전부 소진되어 좀비가 되었습니다...");
+                return;
+            }
+
+            renderStatus();
+            showRandomEvent();
+        }
+
+        // 게임 오버 함수
+        function gameOver(reason) {
+            renderStatus();
+            eventTitle.innerText = "💀 생존 실패 (GAME OVER)";
+            eventDesc.innerText = reason;
+            monitor.innerHTML += `\n💥 [최종 결과] ${reason}\n당신은 ${day}일 동안 생존했습니다.\n`;
+            monitor.scrollTop = monitor.scrollHeight;
+            disableGame();
+        }
+
+        // 승리 함수
+        function gameWin() {
+            renderStatus();
+            let score = (health * 20) + (food * 10) + (survivors * 30);
+            eventTitle.innerText = "🎉 생존 성공! (VICTORY)";
+            eventDesc.innerText = `구조대가 도착했습니다! 당신은 학교에서 무사히 탈출했습니다! (최종 점수: ${score}점)`;
+            monitor.innerHTML += `\n🏆 [생존 성공] 7일간의 아포칼립스에서 생존했습니다!\n구조 헬기에 탑승했습니다.\n`;
+            monitor.scrollTop = monitor.scrollHeight;
+            triggerFlash('heal');
+            disableGame();
+        }
+
+        // 버튼 비활성화 함수
+        function disableGame() {
+            choice1Btn.style.display = "none";
+            choice2Btn.style.display = "none";
+            restartBtn.style.display = "flex";
+        }
+
+        // 게임 리셋 함수
+        function initGame() {
+            day = 1;
+            health = 3;
+            food = 2;
+            survivors = 1;
+            monitor.innerHTML = "=== 생존 기록 장비 작동 시작 ===\n";
+            
+            choice1Btn.style.display = "flex";
+            choice2Btn.style.display = "flex";
+            restartBtn.style.display = "none";
+
+            renderStatus();
+            showRandomEvent();
+        }
+
+        // ==========================================
+        // 5. 이벤트 (Events): 버튼 클릭 연결
+        // ==========================================
+        choice1Btn.onclick = function() {
+            processChoice(1);
+        };
+
+        choice2Btn.onclick = function() {
+            processChoice(2);
+        };
+
+        restartBtn.onclick = function() {
+            initGame();
+        };
+
+        // 최초 게임 시작
+        initGame();
+    </script>
+</body>
+</html>
